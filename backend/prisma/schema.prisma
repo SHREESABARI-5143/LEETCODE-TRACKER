@@ -1,0 +1,266 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  PLACEMENT
+  HOD
+  PROCTOR
+  STUDENT
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  collegeEmail       String   @unique
+  password           String
+  name               String
+  role               Role
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  tokenVersion       Int      @default(0)
+  departmentId       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  department         Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  proctor            Proctor?
+  student            Student?
+  auditLogs          AuditLog[]  @relation("AdminAuditLogs")
+  receivedLogs       AuditLog[]  @relation("TargetAuditLogs")
+}
+
+model Proctor {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  email       String   @unique
+  designation String
+  sections    String[] // e.g., ["Y1-A", "Y2-B"]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  students    Student[]
+}
+
+model Student {
+  id                String   @id @default(uuid())
+  registerNumber    String   @unique
+  name              String
+  collegeEmail      String   @unique
+  userId            String?  @unique
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  year              Int      // 1, 2, 3, 4
+  section           String
+  batch             String   // e.g., "2023-2027"
+  proctorId         String?
+  proctor           Proctor? @relation(fields: [proctorId], references: [id], onDelete: SetNull)
+  leetcodeUsername  String   @unique
+  leetcodeProfileUrl String
+  status            String   @default("active") // "active", "attention", "inactive"
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  profile          LeetCodeProfile?
+  problems         StudentProblem[]
+  contestResults   ContestResult[]
+  activityDays     ActivityDay[]
+  snapshots        AnalysisSnapshot[]
+
+  @@index([registerNumber])
+  @@index([leetcodeUsername])
+  @@index([year])
+  @@index([section])
+  @@index([proctorId])
+}
+
+model LeetCodeProfile {
+  id                   String   @id @default(uuid())
+  studentId            String   @unique
+  student              Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  ranking              Int?
+  reputation           Int?
+  totalSolved          Int      @default(0)
+  easySolved           Int      @default(0)
+  mediumSolved         Int      @default(0)
+  hardSolved           Int      @default(0)
+  acceptanceRate       Float    @default(0.0)
+  contestRating        Float    @default(0.0)
+  highestContestRating Float    @default(0.0)
+  contestGlobalRanking Int?
+  contestsAttended     Int      @default(0)
+  badgeCount           Int      @default(0)
+  lastSyncedAt         DateTime @default(now())
+
+  badges               Badge[]
+}
+
+model Badge {
+  id                String          @id @default(uuid())
+  leetcodeProfileId String
+  leetcodeProfile   LeetCodeProfile @relation(fields: [leetcodeProfileId], references: [id], onDelete: Cascade)
+  name              String
+  icon              String          @default("🏅")
+}
+
+model StudentProblem {
+  id         String   @id @default(uuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title      String
+  slug       String
+  difficulty String   // "Easy", "Medium", "Hard"
+  solvedAt   DateTime
+  language   String   @default("Unknown")
+
+  @@unique([studentId, slug])
+  @@index([studentId])
+  @@index([solvedAt])
+}
+
+model ContestResult {
+  id             String   @id @default(uuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  contestName    String
+  contestSlug    String   @default("")   // e.g. "weekly-contest-470"
+  contestType    String   @default("weekly") // "weekly" | "biweekly"
+  contestDate    DateTime
+  rating         Float
+  ratingChange   Float
+  rank           Int      // contest rank (within the contest)
+  globalRank     Int?     // LeetCode global ranking at time of contest
+  problemsSolved Int
+  easyCount      Int      @default(0)
+  mediumCount    Int      @default(0)
+  hardCount      Int      @default(0)
+  finishTimeSeconds Int?  // time taken in seconds
+
+  @@unique([studentId, contestName])
+  @@index([studentId])
+  @@index([contestDate])
+  @@index([contestSlug])
+}
+
+model ActivityDay {
+  id              String   @id @default(uuid())
+  studentId       String
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date            DateTime // Normalized date (yyyy-MM-dd at 00:00)
+  submissionCount Int      @default(0)
+  problemsSolved  Int      @default(0)
+
+  @@unique([studentId, date])
+  @@index([studentId])
+  @@index([date])
+}
+
+model AnalysisSnapshot {
+  id            String   @id @default(uuid())
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date          DateTime // Normalized date (yyyy-MM-dd at 00:00)
+  totalSolved   Int      @default(0)
+  easy          Int      @default(0)
+  medium        Int      @default(0)
+  hard          Int      @default(0)
+  contestRating Float    @default(0.0)
+  globalRank    Int      @default(0)
+  activeDays    Int      @default(0)
+
+  @@unique([studentId, date])
+  @@index([studentId])
+  @@index([date])
+}
+
+model ImportJob {
+  id             String   @id @default(uuid())
+  status         String   @default("pending") // "pending", "processing", "completed", "failed"
+  progress       Float    @default(0.0)
+  totalCount     Int      @default(0)
+  completedCount Int      @default(0)
+  failedCount    Int      @default(0)
+  errorLog       String?  // JSON stringified list of error rows
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AnalysisJob {
+  id             String   @id @default(uuid())
+  status         String   @default("pending") // "pending", "processing", "completed", "failed"
+  progress       Float    @default(0.0)
+  totalCount     Int      @default(0)
+  completedCount Int      @default(0)
+  failedCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ManagedContest {
+  id             String            @id @default(uuid())
+  contestName    String            @unique // e.g., "Weekly Contest 518"
+  contestNumber  Int?              // e.g., 518
+  contestSlug    String            @unique // e.g., "weekly-contest-518"
+  contestType    String            @default("weekly") // "weekly" | "biweekly"
+  startTime      DateTime
+  endTime        DateTime?
+  status         String            @default("upcoming") // "upcoming", "active", "completed"
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  questions      ManagedQuestion[]
+
+  @@index([contestSlug])
+  @@index([startTime])
+  @@index([status])
+}
+
+model ManagedQuestion {
+  id               String          @id @default(uuid())
+  contestId        String
+  contest          ManagedContest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  orderNum         Int             // 1, 2, 3, 4 ...
+  title            String          // e.g. "Minimum Bishop Moves to Reach Target"
+  slug             String          // e.g. "minimum-bishop-moves-to-reach-target"
+  difficulty       String          // "Easy", "Medium", "Hard"
+  verified         Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([contestId, slug])
+  @@unique([contestId, orderNum])
+  @@index([contestId])
+  @@index([slug])
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  adminId         String
+  admin           User     @relation("AdminAuditLogs", fields: [adminId], references: [id], onDelete: Cascade)
+  targetAccountId String?
+  targetAccount   User?    @relation("TargetAuditLogs", fields: [targetAccountId], references: [id], onDelete: SetNull)
+  action          String
+  details         String?  // JSON stringified details
+  createdAt       DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetAccountId])
+  @@index([createdAt])
+}
+
