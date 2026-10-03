@@ -4,7 +4,7 @@ const userController = require('../controllers/userController');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
 
 router.use(authenticateToken);
-router.use(requireRole('ADMIN'));
+router.use(requireRole('ADMIN', 'HOD'));
 
 router.get('/', userController.listUsers);
 router.post('/', userController.createUser);

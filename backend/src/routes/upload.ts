@@ -76,6 +76,7 @@ router.use(softAuthMiddleware);
 router.use(scopeMiddleware);
 
 router.post('/', upload.single('file'), uploadController.uploadStudents);
+router.post('/commit', uploadController.commitUpload);
 router.get('/history', uploadController.getUploadHistory);
 router.get('/template', uploadController.downloadTemplate);
 

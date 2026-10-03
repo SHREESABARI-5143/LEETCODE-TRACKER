@@ -8,6 +8,7 @@ async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.cookies?.token;
 
+  console.log(`[Auth] Using token from: ${authHeader ? 'Header' : (req.cookies?.token ? 'Cookie' : 'None')}`);
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
@@ -24,25 +25,12 @@ async function authenticateToken(req, res, next) {
         return next();
       }
     } catch (err) {
-      // Token expired or invalid signature - fallback gracefully to HOD user
+      // Token expired or invalid signature
+      console.error('JWT Verification failed:', err.message, err);
+      return res.status(401).json({ error: 'Token expired or invalid. Please log in again.' });
     }
-  }
-
-  // Graceful fallback: default to active HOD user
-  try {
-    const [defaultUsers] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.department_id, u.is_active, d.name AS department_name, d.code AS department_code 
-       FROM users u 
-       LEFT JOIN departments d ON u.department_id = d.id 
-       WHERE u.role = 'HOD' AND u.is_active = 1 LIMIT 1`
-    );
-
-    if (defaultUsers.length > 0) {
-      req.user = defaultUsers[0];
-      return next();
-    }
-  } catch (dbErr) {
-    console.error('Error fetching fallback user:', dbErr);
+  } else {
+    console.error('No token provided in headers or cookies.');
   }
 
   return res.status(401).json({ error: 'Authentication required.' });
@@ -73,3 +61,5 @@ module.exports = {
   JWT_SECRET,
   JWT_REFRESH_SECRET
 };
+
+// Trigger nodemon restart

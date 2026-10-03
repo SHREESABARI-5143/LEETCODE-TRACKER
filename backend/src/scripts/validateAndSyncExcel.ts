@@ -26,7 +26,7 @@ function cleanUsername(rawUser: string, rawUrl: string): string {
 }
 
 export async function validateAndSyncFromExcel() {
-  const filePath = path.join(__dirname, '..', '..', '..', '2027 Leetcode UserName with Profile.xlsx');
+  const filePath = path.join(__dirname, '..', '..', 'data', '2027 Leetcode UserName with Profile.xlsx');
   console.log(`\n======================================================`);
   console.log(`  Validating Students against: ${filePath}`);
   console.log(`======================================================`);
@@ -167,7 +167,7 @@ export async function validateAndSyncFromExcel() {
   }
 
   // Also update students_4th_year.json in project root and frontend so mock/fallback data stays in sync
-  const rootJsonPath = path.join(__dirname, '..', '..', '..', 'students_4th_year.json');
+  const rootJsonPath = path.join(__dirname, '..', '..', 'data', 'students_4th_year.json');
   const frontendJsonPath = path.join(__dirname, '..', '..', '..', 'frontend', 'students_4th_year.json');
   const jsonContent = JSON.stringify(excelStudents, null, 2);
 

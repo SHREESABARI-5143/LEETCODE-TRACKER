@@ -14,6 +14,8 @@ import reportsRouter from './routes/reports';
 import exportRouter from './routes/export';
 import analysisRouter from './routes/analysis';
 import dashboardRouter from './routes/dashboard';
+import usersRouter from './routes/users';
+import departmentsRouter from './routes/departments';
 
 const app = express();
 
@@ -43,6 +45,8 @@ app.use('/api/v1/reports', reportsRouter);
 app.use('/api/v1/export', exportRouter);
 app.use('/api/v1/analysis', analysisRouter);
 app.use('/api/v1/dashboard', dashboardRouter);
+app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/departments', departmentsRouter);
 
 // Basic check route
 app.get('/', (req, res) => {

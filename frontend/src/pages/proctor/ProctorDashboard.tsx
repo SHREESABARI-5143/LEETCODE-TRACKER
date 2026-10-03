@@ -87,9 +87,21 @@ export default function ProctorDashboard() {
             <h1 className="text-2xl font-bold text-[#1F2933]">{proctor?.name}</h1>
             <p className="text-sm text-[#6B7280]">{proctor?.designation} · {proctor?.email}</p>
           </div>
-          <div className="text-right sm:text-right text-left">
-            <div className="text-3xl font-bold text-[#C58A22]">{students.length}</div>
-            <div className="text-xs text-[#6B7280]">assigned students</div>
+          <div className="text-right flex flex-col items-end">
+            <div className="flex items-center gap-4 mb-2">
+              <div className="text-right">
+                <div className="text-3xl font-bold text-[#C58A22]">{students.length}</div>
+                <div className="text-xs text-[#6B7280]">assigned students</div>
+              </div>
+              <button 
+                onClick={fetchDashboard}
+                disabled={loading}
+                className="btn btn-outline btn-sm gap-2 text-[#C58A22] border-[#C58A22] hover:bg-[#C58A22] hover:text-white"
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Sync
+              </button>
+            </div>
+            <div className="text-[10px] text-gray-400">Last Synced: {new Date().toLocaleTimeString()}</div>
           </div>
         </div>
       </div>

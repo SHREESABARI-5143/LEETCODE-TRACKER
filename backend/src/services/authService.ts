@@ -110,8 +110,12 @@ async function refreshToken(token) {
 }
 
 async function createUser(payload, creatorRole) {
-  if (creatorRole !== 'ADMIN') {
-    throw new Error('Only administrators can create user accounts.');
+  if (creatorRole !== 'ADMIN' && creatorRole !== 'HOD') {
+    throw new Error('You do not have permission to create users.');
+  }
+  
+  if (creatorRole === 'HOD' && payload.role?.toUpperCase() !== 'PROCTOR') {
+    throw new Error('HODs can only create Proctor accounts.');
   }
 
   const { name, email, password, role, department_id } = payload;
@@ -128,15 +132,17 @@ async function createUser(payload, creatorRole) {
 
   // Validate department requirements
   let finalDeptId = null;
+  let finalDeptCode = null;
   if (['HOD', 'PROCTOR'].includes(normalizedRole)) {
     if (!department_id) {
       throw new Error(`A department is required for ${normalizedRole} accounts.`);
     }
-    const [depts] = await pool.query('SELECT id FROM departments WHERE id = ?', [department_id]);
+    const [depts] = await pool.query('SELECT id, code FROM departments WHERE id = ?', [department_id]);
     if (depts.length === 0) {
       throw new Error('Specified department does not exist.');
     }
     finalDeptId = parseInt(department_id);
+    finalDeptCode = depts[0].code;
   }
 
   // Check email uniqueness
@@ -152,9 +158,21 @@ async function createUser(payload, creatorRole) {
      VALUES (?, ?, ?, ?, ?, TRUE, NOW())`,
     [name.trim(), email.trim().toLowerCase(), passwordHash, normalizedRole, finalDeptId]
   );
+  
+  const userId = result.insertId;
+
+  // If role is PROCTOR, we must create a record in the proctors table
+  if (normalizedRole === 'PROCTOR') {
+    const { normalizeProctorName } = require('../utils/nameNormalizer');
+    const normalizedName = normalizeProctorName(name.trim());
+    await pool.query(
+      `INSERT INTO proctors (user_id, full_name, normalized_name, department, created_at) VALUES (?, ?, ?, ?, NOW())`,
+      [userId, name.trim(), normalizedName, finalDeptCode]
+    );
+  }
 
   return {
-    id: result.insertId,
+    id: userId,
     name: name.trim(),
     email: email.trim().toLowerCase(),
     role: normalizedRole,

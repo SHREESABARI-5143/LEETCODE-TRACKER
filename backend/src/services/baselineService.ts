@@ -22,8 +22,8 @@ function isBaselineMissing(existingStats) {
 
   // DB default: daily_start_total is 0 but student clearly has problems solved.
   // The ONLY way dst=0 is valid is if total_solved is also 0 at capture time.
-  // We check ts > 50 to give a margin for accounts with a small real total of 0.
-  if (dst === 0 && ts > 50) return true;
+  // If ts > 0, it means they had problems solved before the baseline was properly captured.
+  if (dst === 0 && ts > 0) return true;
 
   return false;
 }
@@ -41,10 +41,10 @@ function isBaselineMissing(existingStats) {
  * - baseline_cycle 'YYYY-MM-DD' is the IST date of the 5:30 AM window.
  * - PRESERVES daily_start_total throughout the day (never overwrites within cycle).
  * - At 5:30 AM reset, baseline → current total and daily count → 0.
- * - If daily_start_total is the DB default 0 but total_solved > 50,
+ * - If daily_start_total is the DB default 0 but total_solved > 0,
  *   treats the row as "no baseline captured" → dailySolved = null.
  */
-function resolveDailyBaseline(currentTotal, existingStats) {
+function resolveDailyBaseline(currentTotal, existingStats, leetcodeDailySolved = 0) {
   const currentCycle = leetcodeService.getCurrent530AmCycleKey();
   const numCurrentTotal = Number(currentTotal) || 0;
 
@@ -86,12 +86,14 @@ function resolveDailyBaseline(currentTotal, existingStats) {
   }
 
   // ── Case 4: Row exists but for a previous cycle (day rollover) ──────────────
-  // Use yesterday's last-known total as the new 5:30 AM baseline (best proxy).
-  // The 5:30 AM reset job normally handles this, but may not have run yet.
-  const previousTotal = Number(existingStats.total_solved) || numCurrentTotal;
-  const dailySolved = Math.max(0, numCurrentTotal - previousTotal);
+  // Use leetcodeDailySolved to establish today's start total. 
+  // If the student hasn't synced in 10 days, previousTotal is 10 days old.
+  // We should NOT attribute a 10-day gap entirely to "today".
+  const dailySolved = Number(leetcodeDailySolved) || 0;
+  const dailyStartTotal = Math.max(0, numCurrentTotal - dailySolved);
+  
   return {
-    dailyStartTotal: previousTotal,
+    dailyStartTotal,
     baselineCycle: currentCycle,
     dailySolved,
     baselineMissing: false
@@ -130,7 +132,7 @@ async function resetDailyBaselinesAt530Am() {
 
 /**
  * Immediately backfill missing baselines for students whose daily_start_total is
- * the DB-default 0 but total_solved > 50 (invalid baseline).
+ * the DB-default 0 but total_solved > 0 (invalid baseline).
  *
  * Sets their baseline = current total_solved right now so going forward their
  * today_solved_count will correctly be 0 (or small delta), never their full total.
@@ -149,7 +151,7 @@ async function backfillMissingBaselines() {
            baseline_cycle = ?,
            baseline_updated_at = NOW()
        WHERE (
-         (baseline_cycle = ? AND daily_start_total = 0 AND total_solved > 50)
+         (baseline_cycle = ? AND daily_start_total = 0 AND total_solved > 0)
          OR (baseline_cycle IS NULL AND total_solved > 0)
        )`,
       [currentCycle, currentCycle]

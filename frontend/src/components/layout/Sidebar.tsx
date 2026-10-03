@@ -23,7 +23,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard',     path: '/admin',          icon: <LayoutDashboard size={18} />, roles: ['admin'] },
   { label: 'Users',         path: '/admin/users',    icon: <Users size={18} />,           roles: ['admin'] },
   { label: 'Department',    path: '/admin/dept',     icon: <BookOpen size={18} />,        roles: ['admin'] },
-  { label: 'Import Students', path: '/admin/import', icon: <Upload size={18} />,          roles: ['admin'] },
   // HOD
   { label: 'Dashboard',     path: '/hod',            icon: <LayoutDashboard size={18} />, roles: ['hod'] },
   { label: '1st Year',      path: '/hod/year/1',     icon: <BookOpen size={18} />,        roles: ['hod'] },

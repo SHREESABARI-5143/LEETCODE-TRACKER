@@ -31,17 +31,14 @@ async function getProctorPerformance(req, res, next) {
 
     // Fetch proctors from database
     const [dbProctors] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.department_id, d.name AS department_name
-       FROM users u
-       LEFT JOIN departments d ON u.department_id = d.id
-       WHERE u.role IN ('PROCTOR', 'HOD')
-       ORDER BY u.role DESC, u.name ASC`
+      `SELECT p.id, p.full_name AS name, u.email, p.designation, p.department AS department_name
+       FROM proctors p
+       LEFT JOIN users u ON p.user_id = u.id
+       WHERE p.is_active = 1
+       ORDER BY p.full_name ASC`
     );
 
-    // Default faculty proctor pool if only 1 proctor account exists
-    const proctorsPool = dbProctors.length > 0 ? dbProctors : [
-      { id: 5, name: 'Dr. Anitha Kumar', email: 'proctor@svec.edu.in' }
-    ];
+    const proctorsPool = dbProctors;
 
     const yearGroups = [];
 
@@ -49,11 +46,12 @@ async function getProctorPerformance(req, res, next) {
       // Fetch all students for this year
       const [students] = await pool.query(
         `SELECT s.id, s.roll_number, s.name, s.leetcode_username, s.year_of_study, s.sync_status,
-                s.proctor_id, u.name AS proctor_name, u.email AS proctor_email,
+                s.proctor_id, p.full_name AS proctor_name, u.email AS proctor_email,
                 ls.total_solved, ls.easy_solved, ls.medium_solved, ls.hard_solved, ls.ranking,
                 ls.contest_rating, ls.daily_solved, ls.weekly_solved, ls.monthly_solved
          FROM students s
-         LEFT JOIN users u ON s.proctor_id = u.id
+         LEFT JOIN proctors p ON s.proctor_id = p.id
+         LEFT JOIN users u ON p.user_id = u.id
          LEFT JOIN leetcode_stats ls ON s.id = ls.student_id
          WHERE s.year_of_study = ?
          ORDER BY ls.total_solved DESC, s.name ASC`,
@@ -84,8 +82,10 @@ async function getProctorPerformance(req, res, next) {
       });
 
       // Distribute students
-      students.forEach((s, idx) => {
-        const assignedProctorId = s.proctor_id || proctorsPool[idx % proctorsPool.length].id;
+      students.forEach((s) => {
+        if (!s.proctor_id) return; // Skip unassigned students in proctor view
+        
+        const assignedProctorId = s.proctor_id;
         if (!proctorMap.has(assignedProctorId)) {
           proctorMap.set(assignedProctorId, {
             id: String(assignedProctorId),
@@ -200,8 +200,9 @@ async function getMyProctorDashboard(req, res, next) {
               ls.total_solved, ls.easy_solved, ls.medium_solved, ls.hard_solved, ls.ranking,
               ls.contest_rating, ls.daily_solved, ls.weekly_solved, ls.monthly_solved
        FROM students s
+       JOIN proctors p ON s.proctor_id = p.id
        LEFT JOIN leetcode_stats ls ON s.id = ls.student_id
-       WHERE s.proctor_id = ? OR s.proctor_id IS NULL
+       WHERE p.user_id = ?
        ORDER BY ls.total_solved DESC, s.name ASC`,
       [proctorId]
     );

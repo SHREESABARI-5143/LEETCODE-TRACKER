@@ -20,7 +20,7 @@ interface ExcelStudent {
 function loadStudentsFromJSON(): ExcelStudent[] {
   // Try root-level copy first, then frontend copy
   const candidates = [
-    path.join(__dirname, '..', '..', 'students_4th_year.json'),
+    path.join(__dirname, '..', 'data', 'students_4th_year.json'),
     path.join(__dirname, '..', '..', 'frontend', 'students_4th_year.json'),
   ];
   

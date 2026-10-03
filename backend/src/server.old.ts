@@ -36,6 +36,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routing mounts
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/v1/users', require('./routes/users'));
 app.use('/api/departments', require('./routes/departments'));
 app.use('/api/students', require('./routes/students'));
 app.use('/api/profile', require('./routes/profile'));
@@ -79,7 +80,7 @@ async function startServer() {
     // Run auto-migrations
     await pool.runMigrations();
 
-    // Immediately fix any students with invalid baselines (daily_start_total=0 but total_solved>50)
+    // Immediately fix any students with invalid baselines (daily_start_total=0 but total_solved>0)
     // so the TODAY column never shows a student's full career total as their daily count.
     const { backfillMissingBaselines } = require('./services/baselineService');
     await backfillMissingBaselines();

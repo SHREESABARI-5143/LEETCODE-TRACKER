@@ -8,7 +8,7 @@ function getAuthHeader(): Record<string, string> {
     'Content-Type': 'application/json',
   };
   try {
-    const authStorage = localStorage.getItem('codetrack-auth');
+    const authStorage = localStorage.getItem('codetrack-auth-v2');
     if (authStorage) {
       const parsed = JSON.parse(authStorage);
       const token = parsed?.state?.token;
@@ -39,7 +39,7 @@ async function request(url: string, options: RequestInit = {}): Promise<any> {
   // Handle token refresh on 401
   if (res.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/refresh')) {
     try {
-      const authStorage = localStorage.getItem('codetrack-auth');
+      const authStorage = localStorage.getItem('codetrack-auth-v2');
       const parsed = authStorage ? JSON.parse(authStorage) : null;
       const refreshToken = parsed?.state?.refreshToken;
 
@@ -55,14 +55,27 @@ async function request(url: string, options: RequestInit = {}): Promise<any> {
           if (refreshData?.accessToken && parsed?.state) {
             parsed.state.token = refreshData.accessToken;
             parsed.state.refreshToken = refreshData.refreshToken || refreshToken;
-            localStorage.setItem('codetrack-auth', JSON.stringify(parsed));
+            localStorage.setItem('codetrack-auth-v2', JSON.stringify(parsed));
 
             // Retry original request with new token
             return request(url, options);
           }
+        } else {
+          // Force logout
+          localStorage.removeItem('codetrack-auth-v2');
+          window.location.href = '/login';
+          return { data: null, status: 401 };
         }
+      } else {
+        localStorage.removeItem('codetrack-auth-v2');
+        window.location.href = '/login';
+        return { data: null, status: 401 };
       }
-    } catch (e) {}
+    } catch (e) {
+      localStorage.removeItem('codetrack-auth-v2');
+      window.location.href = '/login';
+      return { data: null, status: 401 };
+    }
   }
 
   let data: any = null;
@@ -246,6 +259,11 @@ export const uploadApi = {
     request('/api/upload', {
       method: 'POST',
       body: formData,
+    }),
+  commitUpload: (data: any) =>
+    request('/api/upload/commit', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
   getHistory: () => request('/api/upload/history'),
   getTemplateUrl: () => '/api/upload/template',

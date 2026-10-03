@@ -8,13 +8,6 @@ import { toast } from 'react-hot-toast';
 
 export default function AdminDashboard() {
   const { institution } = useAuthStore();
-  const [overall, setOverall] = useState<any>({
-    totalStudents: 0,
-    activeStudents: 0,
-    analyzedStudents: 0,
-    totalSolved: 0,
-    avgSolved: 0
-  });
   const [usersList, setUsersList] = useState<any[]>([]);
   const [deptsList, setDeptsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,12 +26,10 @@ export default function AdminDashboard() {
   const loadAdminData = async () => {
     setLoading(true);
     try {
-      const [repRes, usersRes, deptsRes] = await Promise.all([
-        reportsApi.getOverall(),
+      const [usersRes, deptsRes] = await Promise.all([
         usersApi.getAll(),
         departmentsApi.getAll()
       ]);
-      if (repRes.data) setOverall(repRes.data);
       if (usersRes.data) setUsersList(usersRes.data);
       if (deptsRes.data) setDeptsList(deptsRes.data);
     } catch (err) {
@@ -55,18 +46,18 @@ export default function AdminDashboard() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const generatedPassword = newUserEmail.split('@')[0];
       await usersApi.create({
         name: newUserName,
         email: newUserEmail,
-        password: newUserPassword,
+        password: generatedPassword,
         role: newUserRole,
         department_id: newUserDept || null
       });
-      toast.success('User account created successfully!');
+      toast.success('User account created successfully! Password set to: ' + generatedPassword);
       setIsModalOpen(false);
       setNewUserName('');
       setNewUserEmail('');
-      setNewUserPassword('');
       await loadAdminData();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to create user');
@@ -75,12 +66,11 @@ export default function AdminDashboard() {
 
   const handleCreateDept = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDeptName || !newDeptCode) return;
+    if (!newDeptName) return;
     try {
-      await departmentsApi.create({ name: newDeptName, code: newDeptCode });
-      toast.success(`Department ${newDeptCode} created!`);
+      await departmentsApi.create({ name: newDeptName, code: '' });
+      toast.success(`Department ${newDeptName} created!`);
       setNewDeptName('');
-      setNewDeptCode('');
       await loadAdminData();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to create department');
@@ -118,9 +108,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard label="Total Students" value={overall.totalStudents || 0} icon={<Users size={18}/>} />
-        <KPICard label="Total Solved" value={formatNumber(overall.totalSolved || 0)} icon={<Activity size={18}/>} color="#4F8A63" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <KPICard label="Active Users" value={usersList.length} icon={<Shield size={18}/>} color="#C58A22" />
         <KPICard label="Departments" value={deptsList.length} icon={<Database size={18}/>} color="#E59A32" />
       </div>
@@ -135,14 +123,6 @@ export default function AdminDashboard() {
             value={newDeptName}
             onChange={e => setNewDeptName(e.target.value)}
             className="input flex-1 min-w-[200px]"
-            required
-          />
-          <input 
-            type="text" 
-            placeholder="Code (e.g. CSE)" 
-            value={newDeptCode}
-            onChange={e => setNewDeptCode(e.target.value)}
-            className="input w-32"
             required
           />
           <button type="submit" className="btn btn-primary btn-sm">Add Department</button>
@@ -221,10 +201,7 @@ export default function AdminDashboard() {
               <div>
                 <label className="text-xs font-semibold block mb-1" style={{ color: '#374151' }}>Email Address</label>
                 <input type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="input w-full" required />
-              </div>
-              <div>
-                <label className="text-xs font-semibold block mb-1" style={{ color: '#374151' }}>Password</label>
-                <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="input w-full" required />
+                <p className="text-[10px] mt-1 text-gray-500">Password will be automatically set to the email prefix.</p>
               </div>
               <div>
                 <label className="text-xs font-semibold block mb-1" style={{ color: '#374151' }}>Role</label>

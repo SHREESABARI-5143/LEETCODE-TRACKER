@@ -238,11 +238,21 @@ export default function StudentProfile() {
     e.preventDefault();
     if (!student || !inputUsername.trim()) return;
 
+    let finalUsername = inputUsername.trim();
+    
+    // Extract username if user pasted a full URL
+    if (finalUsername.includes('leetcode.com')) {
+      const match = finalUsername.match(/leetcode\.com\/(?:u\/)?([^/]+)/i);
+      if (match && match[1]) {
+        finalUsername = match[1];
+      }
+    }
+
     setSaving(true);
     const toastId = toast.loading('Updating LeetCode username & syncing live data...');
 
     try {
-      await studentsApi.updateStudent(student.id, { leetcode_username: inputUsername.trim() });
+      await studentsApi.updateStudent(student.id, { leetcode_username: finalUsername });
       await studentsApi.syncStudent(student.id);
       await loadProfile();
       setIsEditModalOpen(false);
@@ -253,6 +263,7 @@ export default function StudentProfile() {
       setSaving(false);
     }
   };
+
 
   const handleManualSync = async () => {
     if (!student || syncing) return;

@@ -50,13 +50,14 @@ async function getStudents(req, res, next) {
              s.leetcode_username, s.profile_link, s.sync_status, s.last_synced_at,
              s.department_id, s.proctor_id, s.created_at,
              d.name AS department_name, d.code AS department_code,
-             u.name AS proctor_name, u.email AS proctor_email,
+             p.full_name AS proctor_name, u.email AS proctor_email,
              ls.total_solved, ls.easy_solved, ls.medium_solved, ls.hard_solved,
              ls.daily_start_total, ls.daily_solved, ls.weekly_solved, ls.monthly_solved,
              ls.ranking, ls.contest_rating, ls.contest_global_rank, ls.last_fetch_status, ls.last_fetch_error
       FROM students s
       LEFT JOIN departments d ON s.department_id = d.id
-      LEFT JOIN users u ON s.proctor_id = u.id
+      LEFT JOIN proctors p ON s.proctor_id = p.id
+      LEFT JOIN users u ON p.user_id = u.id
       LEFT JOIN leetcode_stats ls ON s.id = ls.student_id
       ${whereSql}
       ORDER BY ls.total_solved DESC, ls.ranking ASC, s.roll_number ASC
@@ -123,13 +124,14 @@ async function getStudentById(req, res, next) {
               s.leetcode_username, s.profile_link, s.sync_status, s.last_synced_at,
               s.department_id, s.proctor_id, s.created_at,
               d.name AS department_name, d.code AS department_code,
-              u.name AS proctor_name, u.email AS proctor_email,
+              p.full_name AS proctor_name, u.email AS proctor_email,
               ls.total_solved, ls.easy_solved, ls.medium_solved, ls.hard_solved,
               ls.daily_start_total, ls.daily_solved, ls.weekly_solved, ls.monthly_solved,
               ls.ranking, ls.contest_rating, ls.contest_global_rank, ls.last_fetch_status, ls.last_fetch_error
        FROM students s
        LEFT JOIN departments d ON s.department_id = d.id
-       LEFT JOIN users u ON s.proctor_id = u.id
+       LEFT JOIN proctors p ON s.proctor_id = p.id
+       LEFT JOIN users u ON p.user_id = u.id
        LEFT JOIN leetcode_stats ls ON s.id = ls.student_id
        WHERE s.id = ? LIMIT 1`,
       [studentId]
@@ -290,7 +292,7 @@ async function syncStudent(req, res, next) {
         [studentId]
       );
       const existing = existingStatsRows[0] || null;
-      const { dailyStartTotal, baselineCycle, dailySolved } = baselineService.resolveDailyBaseline(d.total_solved, existing);
+      const { dailyStartTotal, baselineCycle, dailySolved } = baselineService.resolveDailyBaseline(d.total_solved, existing, d.daily_solved);
 
       await pool.query(
         `INSERT INTO leetcode_stats 

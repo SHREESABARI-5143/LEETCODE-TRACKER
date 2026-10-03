@@ -36,20 +36,14 @@ function cleanStudentName(rawName) {
 
 function parseExcelFile(filePath, defaultYear = 1, defaultPlacementStatus = 'Placement') {
   const workbook = xlsx.readFile(filePath);
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-
-  const rows = xlsx.utils.sheet_to_json(sheet, { raw: false, defval: '' });
-
-  const totalRecords = rows.length;
   const valid = [];
   const invalid = [];
   const duplicates = [];
   const errorReport = [];
-
   const seenRollNumbers = new Set();
+  let totalRecords = 0;
 
-  if (rows.length === 0) {
+  if (workbook.SheetNames.length === 0) {
     return {
       totalRecords: 0,
       valid,
@@ -59,107 +53,143 @@ function parseExcelFile(filePath, defaultYear = 1, defaultPlacementStatus = 'Pla
     };
   }
 
-  const sampleRow = rows[0];
-  const headers = Object.keys(sampleRow);
-
   const isSNoHeader = (h) => /^\s*(s\.?\s*l?\.?\s*n?o?\.?|sno\.?|s\.?\s*n\.?|serial\.?|#|index|no\.)\s*$/i.test(h.trim());
 
-  let rollKey = headers.find(h => !isSNoHeader(h) && /roll\s*number|roll\s*no|reg\s*no|regno|register\s*number|register\s*no|student\s*id|^roll$/i.test(h.trim()));
-  let nameKey = headers.find(h => !isSNoHeader(h) && /student\s*name|^name$|name\s*of\s*the\s*student|student/i.test(h.trim()));
-  let usernameKey = headers.find(h => !isSNoHeader(h) && /leetcode\s*id|leetcode\s*username|username|leetcode\s*user|handle/i.test(h.trim()));
-  let profileUrlKey = headers.find(h => !isSNoHeader(h) && /profile\s*link|leetcode\s*profile\s*url|profile\s*url|^profile$|link|url/i.test(h.trim()));
-  let yearKey = headers.find(h => !isSNoHeader(h) && /^year\s*of\s*study$|^year$|^batch$/i.test(h.trim()));
-  let placementKey = headers.find(h => !isSNoHeader(h) && /placement\s*status|placement|category|type|placed/i.test(h.trim()));
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rowData = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    
+    if (rowData.length === 0) continue;
 
-  const nonSNoHeaders = headers.filter(h => !isSNoHeader(h));
-  if (!rollKey && nonSNoHeaders.length >= 1) rollKey = nonSNoHeaders[0];
-  if (!nameKey && nonSNoHeaders.length >= 2) nameKey = nonSNoHeaders[1];
-  if (!usernameKey && nonSNoHeaders.length >= 3) usernameKey = nonSNoHeaders[2];
-  if (!profileUrlKey && nonSNoHeaders.length >= 4) profileUrlKey = nonSNoHeaders[3];
+    let headerRowIndex = -1;
+    let proctorName = '';
 
-  if (!rollKey || !nameKey) {
-    return {
-      totalRecords: 0,
-      valid,
-      invalid,
-      duplicates,
-      errorReport: [{ row: 0, message: 'Could not detect required columns: Roll Number, Name' }]
-    };
-  }
-
-  rows.forEach((row, index) => {
-    const rowNum = index + 2;
-    let rollNumber = row[rollKey] ? String(row[rollKey]).trim() : '';
-    let name = row[nameKey] ? cleanStudentName(row[nameKey]) : '';
-    const rawUsername = usernameKey && row[usernameKey] ? String(row[usernameKey]).trim() : '';
-    const rawProfileUrl = profileUrlKey && row[profileUrlKey] ? String(row[profileUrlKey]).trim() : '';
-    const rawYear = yearKey && row[yearKey] ? row[yearKey] : defaultYear;
-    const rawPlacement = placementKey && row[placementKey] ? String(row[placementKey]).trim() : defaultPlacementStatus;
-
-    if (!rollNumber && !name && !rawUsername && !rawProfileUrl) {
-      return;
+    for (let i = 0; i < Math.min(10, rowData.length); i++) {
+       const row = rowData[i] || [];
+       const rowStr = row.slice(0, 5).map(c => String(c)).join(' ');
+       
+       const proctorMatch = rowStr.match(/Proctor:\s*([^(]+)/i);
+       if (proctorMatch) {
+         proctorName = proctorMatch[1].trim();
+       }
+       
+       if (row.some(cell => /register\s*number|register\s*no|roll\s*number|roll\s*no|student\s*id/i.test(String(cell).trim()))) {
+         headerRowIndex = i;
+         break;
+       }
     }
 
-    // Auto-fix if register number is inside Name column
-    if (name && (!rollNumber || isSNoHeader(rollKey))) {
-      const regPattern = /([0-9]{2}[A-Z0-9]{2,8}[0-9]{2,5})/i;
-      const match = name.match(regPattern);
-      if (match) {
-        rollNumber = match[1].trim();
-        name = name.replace(match[0], '').replace(/^[\s\-\:\.\)]+/, '').replace(/[\s\-\:\.\(]+$/, '').trim();
-      }
-    }
-
-    if (!rollNumber) {
-      invalid.push({ row: rowNum, rollNumber, name, reason: 'Missing Roll Number' });
-      errorReport.push({ row: rowNum, message: 'Roll Number cannot be empty' });
-      return;
-    }
-
-    if (!name) {
-      invalid.push({ row: rowNum, rollNumber, name, reason: 'Missing Student Name' });
-      errorReport.push({ row: rowNum, message: 'Student Name cannot be empty' });
-      return;
-    }
-
-    const normRoll = rollNumber.toUpperCase();
-    if (seenRollNumbers.has(normRoll)) {
-      duplicates.push({ row: rowNum, rollNumber, name, reason: 'Duplicate Roll Number in spreadsheet' });
-      errorReport.push({ row: rowNum, message: `Duplicate Roll Number: ${rollNumber}` });
-      return;
-    }
-    seenRollNumbers.add(normRoll);
-
-    let parsedHandle = null;
-    let finalProfileLink = '';
-    const urlValidation = validators.parseProfileUrl(rawProfileUrl || rawUsername);
-
-    if (urlValidation.isValid) {
-      parsedHandle = urlValidation.username;
-      finalProfileLink = urlValidation.fullUrl;
-    } else if (!isNilString(rawUsername)) {
-      parsedHandle = rawUsername.trim();
-      finalProfileLink = `https://leetcode.com/u/${parsedHandle}/`;
+    let rowsToProcess = [];
+    if (headerRowIndex >= 0) {
+       rowsToProcess = xlsx.utils.sheet_to_json(sheet, { range: headerRowIndex, raw: false, defval: '' });
     } else {
-      parsedHandle = `NIL_${normRoll}`;
-      finalProfileLink = '';
+       rowsToProcess = xlsx.utils.sheet_to_json(sheet, { raw: false, defval: '' });
     }
 
-    let parsedYear = parseInt(rawYear, 10);
-    if (isNaN(parsedYear) || parsedYear < 1 || parsedYear > 4) {
-      parsedYear = parseInt(defaultYear, 10) || 1;
+    if (rowsToProcess.length === 0) continue;
+
+    const sampleRow = rowsToProcess[0];
+    const headers = Object.keys(sampleRow);
+    let rollKey = headers.find(h => !isSNoHeader(h) && /roll\s*number|roll\s*no|reg\s*no|regno|register\s*number|register\s*no|student\s*id|^roll$/i.test(h.trim()));
+    let nameKey = headers.find(h => !isSNoHeader(h) && /student\s*name|^name$|name\s*of\s*the\s*student|student/i.test(h.trim()));
+    let usernameKey = headers.find(h => !isSNoHeader(h) && /leetcode\s*id|leetcode\s*username|username|leetcode\s*user|handle/i.test(h.trim()));
+    let profileUrlKey = headers.find(h => !isSNoHeader(h) && /profile\s*link|leetcode\s*profile\s*url|profile\s*url|^profile$|link|url/i.test(h.trim()));
+    let yearKey = headers.find(h => !isSNoHeader(h) && /^year\s*of\s*study$|^year$|^batch$/i.test(h.trim()));
+    let placementKey = headers.find(h => !isSNoHeader(h) && /placement\s*status|placement|category|type|placed/i.test(h.trim()));
+
+    const nonSNoHeaders = headers.filter(h => !isSNoHeader(h));
+    if (!rollKey && nonSNoHeaders.length >= 1) rollKey = nonSNoHeaders[0];
+    if (!nameKey && nonSNoHeaders.length >= 2) nameKey = nonSNoHeaders[1];
+    if (!usernameKey && nonSNoHeaders.length >= 3) usernameKey = nonSNoHeaders[2];
+    if (!profileUrlKey && nonSNoHeaders.length >= 4) profileUrlKey = nonSNoHeaders[3];
+
+    let proctorKey = headers.find(h => !isSNoHeader(h) && /proctor|mentor|faculty/i.test(h.trim()));
+
+    if (!rollKey || !nameKey) {
+      errorReport.push({ row: 0, message: `Could not detect required columns in sheet ${sheetName}` });
+      continue;
     }
 
-    valid.push({
-      roll_number: rollNumber,
-      name,
-      year_of_study: parsedYear,
-      placement_status: rawPlacement || 'Placement',
-      leetcode_username: parsedHandle,
-      profile_link: finalProfileLink,
-      sync_status: parsedHandle.startsWith('NIL_') ? 'Failed' : 'Pending'
+    totalRecords += rowsToProcess.length;
+
+    rowsToProcess.forEach((row, index) => {
+      const rowNum = index + 2 + (headerRowIndex > 0 ? headerRowIndex : 0);
+      let rollNumber = row[rollKey] ? String(row[rollKey]).trim() : '';
+      let name = row[nameKey] ? cleanStudentName(row[nameKey]) : '';
+      const rawUsername = usernameKey && row[usernameKey] ? String(row[usernameKey]).trim() : '';
+      const rawProfileUrl = profileUrlKey && row[profileUrlKey] ? String(row[profileUrlKey]).trim() : '';
+      const rawYear = yearKey && row[yearKey] ? row[yearKey] : defaultYear;
+      const rawPlacement = placementKey && row[placementKey] ? String(row[placementKey]).trim() : defaultPlacementStatus;
+      
+      // Determine proctor name for this row:
+      // Try column first, fallback to merged sheet-level header if available
+      let rowProctorName = proctorKey && row[proctorKey] ? String(row[proctorKey]).trim() : proctorName;
+
+      if (!rollNumber && !name && !rawUsername && !rawProfileUrl) {
+        return;
+      }
+
+      if (name && (!rollNumber || isSNoHeader(rollKey))) {
+        const regPattern = /([0-9]{2}[A-Z0-9]{2,8}[0-9]{2,5})/i;
+        const match = name.match(regPattern);
+        if (match) {
+          rollNumber = match[1].trim();
+          name = name.replace(match[0], '').replace(/^[\s\-\:\.\)]+/, '').replace(/[\s\-\:\.\(]+$/, '').trim();
+        }
+      }
+
+      if (!rollNumber) {
+        invalid.push({ row: rowNum, rollNumber, name, reason: 'Missing Roll Number' });
+        errorReport.push({ row: rowNum, message: 'Roll Number cannot be empty' });
+        return;
+      }
+
+      if (!name) {
+        invalid.push({ row: rowNum, rollNumber, name, reason: 'Missing Student Name' });
+        errorReport.push({ row: rowNum, message: 'Student Name cannot be empty' });
+        return;
+      }
+
+      const normRoll = rollNumber.toUpperCase();
+      if (seenRollNumbers.has(normRoll)) {
+        duplicates.push({ row: rowNum, rollNumber, name, reason: 'Duplicate Roll Number in spreadsheet' });
+        errorReport.push({ row: rowNum, message: `Duplicate Roll Number: ${rollNumber}` });
+        return;
+      }
+      seenRollNumbers.add(normRoll);
+
+      let parsedHandle = null;
+      let finalProfileLink = '';
+      const urlValidation = validators.parseProfileUrl(rawProfileUrl || rawUsername);
+
+      if (urlValidation.isValid) {
+        parsedHandle = urlValidation.username;
+        finalProfileLink = urlValidation.fullUrl;
+      } else if (!isNilString(rawUsername)) {
+        parsedHandle = rawUsername.trim();
+        finalProfileLink = `https://leetcode.com/u/${parsedHandle}/`;
+      } else {
+        parsedHandle = `NIL_${normRoll}`;
+        finalProfileLink = '';
+      }
+
+      let parsedYear = parseInt(rawYear, 10);
+      if (isNaN(parsedYear) || parsedYear < 1 || parsedYear > 4) {
+        parsedYear = parseInt(defaultYear, 10) || 1;
+      }
+
+      valid.push({
+        roll_number: rollNumber,
+        name,
+        year_of_study: parsedYear,
+        placement_status: rawPlacement || 'Placement',
+        leetcode_username: parsedHandle,
+        profile_link: finalProfileLink,
+        sync_status: parsedHandle.startsWith('NIL_') ? 'Failed' : 'Pending',
+        raw_proctor_name: rowProctorName
+      });
     });
-  });
+  }
 
   return {
     totalRecords,

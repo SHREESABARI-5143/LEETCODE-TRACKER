@@ -607,7 +607,7 @@ async function syncContestYear(req, res, next) {
         if (statsResult.status === 'OK' && statsResult.data) {
           const d = statsResult.data;
           const existing = existingMap.get(st.id) || null;
-          const { dailyStartTotal, baselineCycle, dailySolved } = baselineService.resolveDailyBaseline(d.total_solved, existing);
+          const { dailyStartTotal, baselineCycle, dailySolved } = baselineService.resolveDailyBaseline(d.total_solved, existing, d.daily_solved);
 
           await pool.query(
             `INSERT INTO leetcode_stats 

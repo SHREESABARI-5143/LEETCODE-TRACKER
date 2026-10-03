@@ -33,13 +33,16 @@ async function listDepartments(req, res, next) {
 async function createDepartment(req, res, next) {
   try {
     const { name, code } = req.body;
-    if (!name || !code) {
-      return res.status(400).json({ error: 'Department name and code are required.' });
+    if (!name) {
+      return res.status(400).json({ error: 'Department name is required.' });
     }
+    
+    // Auto-generate a code from initials if not provided
+    const finalCode = code || name.split(/\\s+/).map(w => w[0]).join('').toUpperCase().substring(0, 5);
 
     const [result] = await pool.query(
       'INSERT INTO departments (name, code, created_at) VALUES (?, ?, NOW())',
-      [name.trim(), code.trim().toUpperCase()]
+      [name.trim(), finalCode.trim()]
     );
 
     res.status(201).json({

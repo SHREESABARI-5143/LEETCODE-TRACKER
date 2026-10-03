@@ -227,7 +227,7 @@ async function executeBatchSync(students, departmentId = null, onProgress = null
         if (statsResult.status === 'OK' && statsResult.data) {
           const d = statsResult.data;
           const existing = existingMap.get(student.id) || null;
-          const { dailyStartTotal, baselineCycle, dailySolved } = baselineService.resolveDailyBaseline(d.total_solved, existing);
+          const { dailyStartTotal, baselineCycle, dailySolved } = baselineService.resolveDailyBaseline(d.total_solved, existing, d.daily_solved);
 
           statsBuffer.push({
             studentId: student.id,

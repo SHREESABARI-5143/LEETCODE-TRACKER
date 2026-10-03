@@ -16,13 +16,16 @@ const YEAR_COLORS: Record<number, { bg: string; accent: string; light: string }>
 };
 
 interface ImportStatus {
-  stage: 'idle' | 'selected' | 'importing' | 'done' | 'error';
+  stage: 'idle' | 'selected' | 'parsing' | 'review' | 'importing' | 'done' | 'error';
   fileName: string;
   totalRows: number;
   validCount: number;
   invalidCount: number;
   message: string;
   errors: string[];
+  mapped?: any[];
+  unmatched?: any[];
+  proctors?: any[];
 }
 
 interface Student {
@@ -100,7 +103,7 @@ function YearImportPanel({ year, counts, onCountsRefresh }: { year: number; coun
 
   async function handleImport() {
     if (!selectedFile) return;
-    setStatus(s => ({ ...s, stage: 'importing', message: 'Uploading and parsing Excel roster...' }));
+    setStatus(s => ({ ...s, stage: 'parsing', message: 'Uploading and parsing Excel roster...' }));
 
     const fd = new FormData();
     fd.append('file', selectedFile);
@@ -110,19 +113,20 @@ function YearImportPanel({ year, counts, onCountsRefresh }: { year: number; coun
       const res = await uploadApi.uploadFile(fd);
       const json = res.data;
 
-      setStatus({
-        stage: 'done',
-        fileName: selectedFile.name,
-        totalRows: json.totalRecords || 0,
-        validCount: json.successfulRecords || 0,
-        invalidCount: json.failedRecords || 0,
-        message: `Successfully imported ${json.successfulRecords || 0} students!`,
-        errors: (json.errorReport || []).map((e: any) => e.message || String(e)).slice(0, 5),
-      });
-      setSelectedFile(null);
-      if (fileRef.current) fileRef.current.value = '';
-      onCountsRefresh();
-      if (showTable) fetchStudents();
+      if (json.preview) {
+        setStatus({
+          stage: 'review',
+          fileName: selectedFile.name,
+          totalRows: json.totalRecords || 0,
+          validCount: json.mapped?.length || 0,
+          invalidCount: json.invalidRecords?.length || 0,
+          message: 'Review unmatched proctors before committing.',
+          errors: (json.errorReport || []).map((e: any) => e.message || String(e)).slice(0, 5),
+          mapped: json.mapped || [],
+          unmatched: json.unmatched || [],
+          proctors: json.proctors || []
+        });
+      }
     } catch (err: any) {
       const errMsg = err.response?.data?.error || err.message || 'Import failed';
       const errors = err.response?.data?.errorReport || [];
@@ -134,6 +138,51 @@ function YearImportPanel({ year, counts, onCountsRefresh }: { year: number; coun
       }));
     }
   }
+
+  async function handleCommit() {
+    setStatus(s => ({ ...s, stage: 'importing', message: 'Committing to database...' }));
+    try {
+      const payload = {
+        fileName: status.fileName,
+        defaultYear: year,
+        mapped: status.mapped,
+        unmatched: status.unmatched,
+        errors: status.errors
+      };
+      const res = await uploadApi.commitUpload(payload);
+      const json = res.data;
+
+      setStatus({
+        stage: 'done',
+        fileName: status.fileName,
+        totalRows: status.totalRows,
+        validCount: json.successfulCount || 0,
+        invalidCount: json.failedCount || 0,
+        message: `Successfully imported ${json.successfulCount || 0} students!`,
+        errors: [],
+      });
+      setSelectedFile(null);
+      if (fileRef.current) fileRef.current.value = '';
+      onCountsRefresh();
+      if (showTable) fetchStudents();
+    } catch (err: any) {
+      setStatus(s => ({
+        ...s,
+        stage: 'error',
+        message: err.message || 'Commit failed',
+        errors: []
+      }));
+    }
+  }
+
+  function updateUnmatchedProctor(index: number, proctorId: number) {
+    if (!status.unmatched || !status.proctors) return;
+    const newUnmatched = [...status.unmatched];
+    const p = status.proctors.find((x: any) => x.id === proctorId);
+    newUnmatched[index] = { ...newUnmatched[index], proctor_id: p?.id || null };
+    setStatus(s => ({ ...s, unmatched: newUnmatched }));
+  }
+
 
   async function handleDelete(studentId: string) {
     if (!confirm('Delete this student? This cannot be undone.')) return;
@@ -238,6 +287,64 @@ function YearImportPanel({ year, counts, onCountsRefresh }: { year: number; coun
           <div className="mt-3 flex items-center gap-2 p-3 rounded-lg" style={{ background: '#EEF6F1', border: '1px solid #BBF7D0' }}>
             <CheckCircle size={15} color="#4F8A63" />
             <span className="text-sm font-medium" style={{ color: '#4F8A63' }}>{status.message}</span>
+          </div>
+        )}
+        {status.stage === 'review' && (
+          <div className="mt-4 p-4 rounded-xl" style={{ border: '1px solid #E5E7EB', background: '#FFFFFF' }}>
+            <h4 className="font-bold text-gray-800 mb-2">Review Proctors</h4>
+            <p className="text-sm text-gray-600 mb-4">
+              {status.unmatched?.length} students have unmatched proctors. Please select the correct proctor for them below.
+            </p>
+            {status.unmatched && status.unmatched.length > 0 ? (
+              <div className="overflow-x-auto mb-4 border rounded">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-3 py-2">Roll No</th>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2 text-red-600">Unmatched Name (Excel)</th>
+                      <th className="px-3 py-2">Select Correct Proctor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {status.unmatched.map((u, i) => (
+                      <tr key={i} className="border-b">
+                        <td className="px-3 py-2 font-mono">{u.roll_number}</td>
+                        <td className="px-3 py-2">{u.name}</td>
+                        <td className="px-3 py-2 text-red-600 font-medium">{u.raw_proctor_name || 'N/A'}</td>
+                        <td className="px-3 py-2">
+                          <select 
+                            className="select select-bordered select-sm w-full max-w-xs" 
+                            value={u.proctor_id || ''}
+                            onChange={(e) => updateUnmatchedProctor(i, Number(e.target.value))}
+                          >
+                            <option value="">-- Select Proctor --</option>
+                            {status.proctors?.map((p: any) => (
+                              <option key={p.id} value={p.id}>{p.full_name} ({p.department})</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <div className="flex gap-2 justify-end">
+              <button 
+                onClick={() => setStatus({ stage: 'idle', fileName: '', totalRows: 0, validCount: 0, invalidCount: 0, message: '', errors: [] })} 
+                className="btn btn-ghost btn-sm"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleCommit} 
+                className="btn btn-primary btn-sm"
+                disabled={status.unmatched?.some(u => !u.proctor_id)}
+              >
+                Commit Upload
+              </button>
+            </div>
           </div>
         )}
         {status.stage === 'error' && (

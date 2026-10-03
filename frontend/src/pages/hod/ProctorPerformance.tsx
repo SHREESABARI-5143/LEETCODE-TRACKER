@@ -99,6 +99,50 @@ export default function ProctorPerformance() {
     fetchProctors();
   }, [fetchProctors]);
 
+  // Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newProctorName, setNewProctorName] = useState('');
+  const [newProctorEmail, setNewProctorEmail] = useState('');
+  const [creating, setCreating] = useState(false);
+  const { user } = useAuthStore();
+
+  const handleCreateProctor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProctorName || !newProctorEmail) return;
+    
+    setCreating(true);
+    try {
+      const generatedPassword = newProctorEmail.split('@')[0];
+      const res = await fetch(`${API}/users`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          name: newProctorName,
+          email: newProctorEmail,
+          password: generatedPassword,
+          role: 'PROCTOR',
+          department_id: user?.departmentId
+        })
+      });
+      
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to create proctor');
+      
+      setIsAddModalOpen(false);
+      setNewProctorName('');
+      setNewProctorEmail('');
+      alert('Proctor created successfully! Password is: ' + generatedPassword);
+      fetchProctors();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleSelectProctor = (p: ProctorMetrics) => {
     setSelectedProctor(p);
     setSearchQuery('');
@@ -501,12 +545,20 @@ export default function ProctorPerformance() {
           </p>
         </div>
 
-        <button
-          onClick={fetchProctors}
-          className="px-3.5 py-1.5 rounded-xl border border-[#E5E7EB] bg-white text-[#1F2933] text-xs font-semibold hover:bg-[#FAFAFA] flex items-center gap-1.5 shadow-sm transition-all self-start sm:self-auto"
-        >
-          <RefreshCw size={13} className="text-[#C58A22]" /> Refresh
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-3.5 py-1.5 rounded-xl border border-[#E5E7EB] bg-[#C58A22] text-white text-xs font-semibold hover:bg-[#B37A1B] flex items-center gap-1.5 shadow-sm transition-all"
+          >
+            Add Proctor
+          </button>
+          <button
+            onClick={fetchProctors}
+            className="px-3.5 py-1.5 rounded-xl border border-[#E5E7EB] bg-white text-[#1F2933] text-xs font-semibold hover:bg-[#FAFAFA] flex items-center gap-1.5 shadow-sm transition-all"
+          >
+            <RefreshCw size={13} className="text-[#C58A22]" /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Year-by-Year Proctor Group Sections */}
@@ -614,6 +666,32 @@ export default function ProctorPerformance() {
           </div>
         );
       })}
+
+      {/* Add Proctor Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/20 flex items-start justify-center z-50 p-4 pt-32">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-[#E5E7EB] animate-fade-in">
+            <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2933' }}>Create New Proctor</h3>
+            <form onSubmit={handleCreateProctor} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold block mb-1" style={{ color: '#374151' }}>Full Name</label>
+                <input type="text" value={newProctorName} onChange={e => setNewProctorName(e.target.value)} className="input w-full" required />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1" style={{ color: '#374151' }}>Email Address</label>
+                <input type="email" value={newProctorEmail} onChange={e => setNewProctorEmail(e.target.value)} className="input w-full" required />
+                <p className="text-[10px] mt-1 text-gray-500">Password will be automatically set to the email prefix.</p>
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="btn btn-secondary btn-sm" disabled={creating}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={creating}>
+                  {creating ? 'Creating...' : 'Create Proctor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

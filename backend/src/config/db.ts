@@ -243,6 +243,64 @@ async function runMigrations() {
       WHERE department_id IS NULL AND needs_department_assignment = FALSE;
     `);
 
+    // 10. proctors
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS proctors (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        full_name VARCHAR(150) NOT NULL,
+        normalized_name VARCHAR(150) NOT NULL UNIQUE,
+        designation VARCHAR(50) DEFAULT NULL,
+        department VARCHAR(50) DEFAULT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_proctor_user (user_id),
+        INDEX idx_proctor_normalized (normalized_name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 11. proctor_aliases
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS proctor_aliases (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        proctor_id INT NOT NULL,
+        alias_normalized VARCHAR(150) NOT NULL UNIQUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (proctor_id) REFERENCES proctors(id) ON DELETE CASCADE,
+        INDEX idx_alias (alias_normalized)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 12. proctor_assignment_history
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS proctor_assignment_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        student_id INT NOT NULL,
+        old_proctor_id INT DEFAULT NULL,
+        new_proctor_id INT NOT NULL,
+        changed_by INT DEFAULT NULL,
+        source VARCHAR(50) NOT NULL DEFAULT 'excel',
+        changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+        FOREIGN KEY (old_proctor_id) REFERENCES proctors(id) ON DELETE SET NULL,
+        FOREIGN KEY (new_proctor_id) REFERENCES proctors(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 13. import_logs
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS import_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        uploaded_by INT DEFAULT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        total INT NOT NULL DEFAULT 0,
+        mapped INT NOT NULL DEFAULT 0,
+        unmatched INT NOT NULL DEFAULT 0,
+        errors INT NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     console.log('[Database] Migrations verified successfully.');
   } finally {
     conn.release();

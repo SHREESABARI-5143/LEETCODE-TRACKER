@@ -4,10 +4,10 @@
   "description": "CodeTrack analytics platform backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "sync:run": "node jobs/updateLeetcodeStats.js",
-    "sync:benchmark": "node jobs/updateLeetcodeStats.js --concurrency 50"
+    "start": "ts-node -T src/server.old.ts",
+    "dev": "nodemon --watch src --ext ts --exec ts-node -T src/server.old.ts",
+    "sync:run": "ts-node src/jobs/updateLeetcodeStats.ts",
+    "sync:benchmark": "ts-node src/jobs/updateLeetcodeStats.ts --concurrency 50"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2",
